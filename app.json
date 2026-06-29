@@ -7,11 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "vinyasapp",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/images/splashscreen_image.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#070a13"
-    },
     "ios": {
       "icon": "./assets/expo.icon"
     },
