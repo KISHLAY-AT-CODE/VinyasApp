@@ -2,20 +2,14 @@ import React, { useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions, Platform } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Image as ExpoImage } from 'expo-image';
+import * as SplashScreen from 'expo-splash-screen';
 
 function getConsoleMessage(message: string): string {
   const lower = message.toLowerCase();
   if (lower.includes('sync')) {
-    return 'vinyas-cli sync --force';
+    return 'Commanding the Waves...';
   }
-  if (lower.includes('test')) {
-    return 'vinyas-cli test --loader';
-  }
-  if (lower.includes('init')) {
-    return 'vinyas-cli init --verbose';
-  }
-  const clean = lower.replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
-  return `vinyas-cli load --${clean || 'app'}`;
+  return 'Surfing through data...';
 }
 
 export function VinyasLoadingScreen({ message = 'Loading Vinyas...' }: { message?: string }) {
@@ -23,6 +17,9 @@ export function VinyasLoadingScreen({ message = 'Loading Vinyas...' }: { message
   const progressValue = useMemo(() => new Animated.Value(0), []);
 
   useEffect(() => {
+    // Hide native splash screen once the animated loading screen mounts
+    SplashScreen.hideAsync().catch(() => {});
+
     // Slow smooth bobbing animation
     Animated.loop(
       Animated.sequence([
@@ -188,7 +185,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   webLoadingText: {
-    color: '#34d399', // Premium terminal emerald green
+    color: '#94a3b8', // Premium terminal slate grey
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
     fontSize: 11,
     fontWeight: '600',

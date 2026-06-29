@@ -29,6 +29,7 @@ import {
   RefreshCw
 } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
+import * as SplashScreen from 'expo-splash-screen';
 
 // Constants & Theme Config
 import { THEME, TRANSLATIONS, API_URL, calculateChapterProgress } from '../constants/vinyas-theme';
@@ -59,6 +60,12 @@ export default function AppIndex() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [loadingStorage, setLoadingStorage] = useState(true);
   const [isTestLoading, setIsTestLoading] = useState(false);
+
+  useEffect(() => {
+    if (fontsLoaded && !loadingStorage) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded, loadingStorage]);
 
   // Network logs console
   const [networkLogs, setNetworkLogs] = useState<string[]>([]);
