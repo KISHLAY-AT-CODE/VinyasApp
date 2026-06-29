@@ -20,6 +20,7 @@ interface SettingsTabProps {
   networkLogs?: string[];
   onClearLogs?: () => void;
   onTriggerTestLoading?: () => void;
+  onManualUpdateCheck?: () => void;
 }
 
 export default function SettingsTab({
@@ -29,7 +30,8 @@ export default function SettingsTab({
   onDisconnect,
   networkLogs = [],
   onClearLogs = () => {},
-  onTriggerTestLoading = () => {}
+  onTriggerTestLoading = () => {},
+  onManualUpdateCheck = () => {}
 }: SettingsTabProps) {
   const [isConsoleFullScreen, setIsConsoleFullScreen] = useState(false);
   const [versionClicks, setVersionClicks] = useState(0);
@@ -97,7 +99,7 @@ export default function SettingsTab({
           }}
         >
           <Text style={styles.infoLabel}>Client Version</Text>
-          <Text style={styles.infoValue}>1.0.0-companion</Text>
+          <Text style={styles.infoValue}>1.0.1</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
@@ -141,6 +143,15 @@ export default function SettingsTab({
         >
           <Text style={styles.infoLabel}>Developer Maintainer</Text>
           <Text style={styles.infoValue}>Vinyas Team</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.updateCheckBtn}
+          onPress={onManualUpdateCheck}
+          activeOpacity={0.7}
+        >
+          <RefreshCw size={14} color={THEME.orange} style={{ marginRight: 6 }} />
+          <Text style={styles.updateCheckBtnText}>Check for Updates</Text>
         </TouchableOpacity>
       </View>
 
@@ -328,6 +339,23 @@ const styles: any = StyleSheet.create({
     color: '#ffffff',
     fontSize: 11,
     fontWeight: '900',
+  },
+  updateCheckBtn: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 22, 0.3)',
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  updateCheckBtnText: {
+    color: THEME.orange,
+    fontSize: 11,
+    fontWeight: '900',
+    fontFamily: 'Poppins-Bold',
   },
   infoRow: {
     flexDirection: 'row',

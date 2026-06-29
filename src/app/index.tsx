@@ -220,6 +220,69 @@ export default function AppIndex() {
     checkForUpdatesBackground();
   }, [loadingStorage]);
 
+  const handleManualUpdateCheck = async () => {
+    if (__DEV__) {
+      Alert.alert("Check for Updates", "Updates are disabled in development mode.");
+      return;
+    }
+
+    try {
+      setUpdateText("Checking for updates...");
+      const updateCheckPromise = Updates.checkForUpdateAsync();
+      const timeoutPromise = new Promise<any>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), 4000)
+      );
+      const update = await Promise.race([updateCheckPromise, timeoutPromise]);
+
+      if (update.isAvailable) {
+        setUpdateText("Update available");
+        Alert.alert(
+          "Update Available",
+          "A new version of Vinyas Sathi is available. Would you like to download and apply the update now?",
+          [
+            {
+              text: "Later",
+              style: "cancel",
+              onPress: () => setUpdateText(null)
+            },
+            {
+              text: "Update & Restart",
+              onPress: async () => {
+                try {
+                  setIsDownloadingUpdate(true);
+                  setUpdateText("Downloading update...");
+                  
+                  // 15s timeout for fetching
+                  const updateFetchPromise = Updates.fetchUpdateAsync();
+                  const fetchTimeoutPromise = new Promise<any>((_, reject) =>
+                    setTimeout(() => reject(new Error("Timeout")), 15000)
+                  );
+                  await Promise.race([updateFetchPromise, fetchTimeoutPromise]);
+
+                  setUpdateText("Applying update...");
+                  await Updates.reloadAsync();
+                } catch (fetchErr) {
+                  console.error("Failed to download update", fetchErr);
+                  Alert.alert("Update Failed", "Could not download the update. Please check your internet connection.");
+                } finally {
+                  setIsDownloadingUpdate(false);
+                  setUpdateText(null);
+                }
+              }
+            }
+          ]
+        );
+      } else {
+        setUpdateText(null);
+        Alert.alert("Up to Date", "Vinyas Sathi is already running the latest version.");
+      }
+    } catch (err) {
+      console.warn("Manual update check failed:", err);
+      setUpdateText(null);
+      Alert.alert("Connection Error", "Failed to check for updates. Please check your internet connection.");
+    }
+  };
+
   // Synchronize ScrollView offset when activeTab changes programmatically
   useEffect(() => {
     if (syncId && mainPagerRef.current) {
@@ -665,6 +728,7 @@ export default function AppIndex() {
                   setTimeout(() => setIsTestLoading(false), 3000);
                 }}
                 onClearLogs={() => setNetworkLogs([])}
+                onManualUpdateCheck={handleManualUpdateCheck}
               />
             </View>
           </ScrollView>
