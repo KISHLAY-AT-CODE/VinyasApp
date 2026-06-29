@@ -9,6 +9,9 @@ function getConsoleMessage(message: string): string {
   if (lower.includes('sync')) {
     return 'Commanding the Waves...';
   }
+  if (lower.includes('checking') || lower.includes('update') || lower.includes('download') || lower.includes('apply') || lower.includes('restart')) {
+    return message;
+  }
   return 'Surfing through data...';
 }
 

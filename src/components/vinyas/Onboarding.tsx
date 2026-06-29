@@ -36,6 +36,7 @@ interface OnboardingProps {
   setIsVinyasHindi: (val: boolean) => void;
   isSathiHindi: boolean;
   setIsSathiHindi: (val: boolean) => void;
+  updateText?: string | null;
 }
 
 export default function Onboarding({
@@ -51,7 +52,8 @@ export default function Onboarding({
   isVinyasHindi,
   setIsVinyasHindi,
   isSathiHindi,
-  setIsSathiHindi
+  setIsSathiHindi,
+  updateText = null
 }: OnboardingProps) {
   const [isInputFocused, setIsInputFocused] = useState(false);
 
@@ -178,6 +180,10 @@ export default function Onboarding({
             <Text style={styles.onboardingCardDesc}>
               {t('welcomeDesc')}
             </Text>
+
+            {updateText && (
+              <Text style={styles.onboardingUpdateText}>{updateText}</Text>
+            )}
 
             <TextInput
               style={[
@@ -348,6 +354,14 @@ const styles = StyleSheet.create({
     color: THEME.red,
     fontSize: 11,
     fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  onboardingUpdateText: {
+    color: THEME.orange,
+    fontSize: 10,
+    fontWeight: 'bold',
+    fontFamily: 'Poppins-Bold',
+    textTransform: 'uppercase',
     marginBottom: 16,
   },
   onboardingBtn: {

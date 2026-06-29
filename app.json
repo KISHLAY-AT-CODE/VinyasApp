@@ -2,11 +2,16 @@
   "expo": {
     "name": "Vinyas Sathi",
     "slug": "VinyasApp",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "vinyasapp",
     "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/splashscreen_image.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#070a13"
+    },
     "ios": {
       "icon": "./assets/expo.icon"
     },
@@ -33,10 +38,13 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#070a13",
+          "image": "./assets/images/splashscreen_image.png",
+          "resizeMode": "contain",
+          "imageWidth": 200,
           "android": {
             "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+            "imageWidth": 200
           }
         }
       ],

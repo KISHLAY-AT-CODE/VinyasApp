@@ -30,6 +30,7 @@ import {
 } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Updates from 'expo-updates';
 
 // Constants & Theme Config
 import { THEME, TRANSLATIONS, API_URL, calculateChapterProgress } from '../constants/vinyas-theme';
@@ -60,6 +61,8 @@ export default function AppIndex() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [loadingStorage, setLoadingStorage] = useState(true);
   const [isTestLoading, setIsTestLoading] = useState(false);
+  const [updateText, setUpdateText] = useState<string | null>(null);
+  const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
 
   useEffect(() => {
     if (fontsLoaded && !loadingStorage) {
@@ -149,6 +152,73 @@ export default function AppIndex() {
     }
     loadConfig();
   }, []);
+
+  // Background OTA updates check after initial loading is complete
+  useEffect(() => {
+    if (loadingStorage) return;
+
+    async function checkForUpdatesBackground() {
+      if (__DEV__) return;
+
+      try {
+        setUpdateText("Checking for updates...");
+        // 4s timeout for update check
+        const updateCheckPromise = Updates.checkForUpdateAsync();
+        const timeoutPromise = new Promise<any>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout")), 4000)
+        );
+        const update = await Promise.race([updateCheckPromise, timeoutPromise]);
+
+        if (update.isAvailable) {
+          setUpdateText("Update available");
+          
+          Alert.alert(
+            "Update Available",
+            "A new version of Vinyas Sathi is available. Would you like to download and apply the update now?",
+            [
+              {
+                text: "Later",
+                style: "cancel",
+                onPress: () => setUpdateText(null)
+              },
+              {
+                text: "Update & Restart",
+                onPress: async () => {
+                  try {
+                    setIsDownloadingUpdate(true);
+                    setUpdateText("Downloading update...");
+                    
+                    // 15s timeout for fetching
+                    const updateFetchPromise = Updates.fetchUpdateAsync();
+                    const fetchTimeoutPromise = new Promise<any>((_, reject) =>
+                      setTimeout(() => reject(new Error("Timeout")), 15000)
+                    );
+                    await Promise.race([updateFetchPromise, fetchTimeoutPromise]);
+
+                    setUpdateText("Applying update...");
+                    await Updates.reloadAsync();
+                  } catch (fetchErr) {
+                    console.error("Failed to download update", fetchErr);
+                    Alert.alert("Update Failed", "Could not download the update. Please check your internet connection.");
+                  } finally {
+                    setIsDownloadingUpdate(false);
+                    setUpdateText(null);
+                  }
+                }
+              }
+            ]
+          );
+        } else {
+          setUpdateText(null);
+        }
+      } catch (err) {
+        console.warn("Background update check failed:", err);
+        setUpdateText(null);
+      }
+    }
+
+    checkForUpdatesBackground();
+  }, [loadingStorage]);
 
   // Synchronize ScrollView offset when activeTab changes programmatically
   useEffect(() => {
@@ -405,6 +475,7 @@ export default function AppIndex() {
           setIsVinyasHindi={setIsVinyasHindi}
           isSathiHindi={isSathiHindi}
           setIsSathiHindi={setIsSathiHindi}
+          updateText={updateText}
         />
         <ScannerModal
           visible={isScannerOpen && !!cameraPermission?.granted}
@@ -482,7 +553,12 @@ export default function AppIndex() {
                 resizeMode="contain"
               />
               <View style={{ marginLeft: 10 }}>
-                <Text style={styles.headerWelcome}>{t('welcomeBack')}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={styles.headerWelcome}>{t('welcomeBack')}</Text>
+                  {updateText && (
+                    <Text style={styles.headerUpdateText}> • {updateText}</Text>
+                  )}
+                </View>
                 <Text style={styles.headerName}>{userName}</Text>
               </View>
             </View>
@@ -636,9 +712,15 @@ export default function AppIndex() {
       </ImageBackground>
 
       {/* Full Screen Loading Overlay (Covers top welcome bar and bottom activity switcher) */}
-      {(isTestLoading || isLoading || isRefetching) && (
+      {(isTestLoading || isLoading || isRefetching || isDownloadingUpdate) && (
         <VinyasLoadingScreen
-          message={isTestLoading ? "Testing Loading Screen..." : "Syncing Vinyas data..."}
+          message={
+            isDownloadingUpdate
+              ? "Downloading update..."
+              : isTestLoading
+              ? "Testing Loading Screen..."
+              : "Syncing Vinyas data..."
+          }
         />
       )}
     </View>
@@ -685,6 +767,12 @@ const styles = StyleSheet.create({
   headerWelcome: {
     color: THEME.textMuted,
     fontSize: 11,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+  },
+  headerUpdateText: {
+    color: THEME.orange,
+    fontSize: 9,
     fontWeight: 'bold',
     textTransform: 'uppercase',
   },
