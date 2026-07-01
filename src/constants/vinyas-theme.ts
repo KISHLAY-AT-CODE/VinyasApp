@@ -17,9 +17,13 @@ export const THEME = {
   glow: 'rgba(249, 115, 22, 0.15)',
 };
 
-// API Base Url
-const FETCH_URL = 'https://vinyas-one.vercel.app/';
-export const API_URL = `${FETCH_URL.replace(/\/$/, '')}/api`;
+// API Connection Config
+// To switch to local testing mode, replace 'production' with your host machine's IP (e.g. '192.xx.xx.xx')
+const DEV_ENV: 'production' | string = 'production';
+
+export const API_URL = DEV_ENV === 'production'
+  ? 'https://vinyas-one.vercel.app/api'
+  : `http://${DEV_ENV}:3000/api`;
 
 export const TRANSLATIONS = {
   en: {
@@ -194,8 +198,104 @@ export function calculateChapterBreakdown(chapter: any) {
 }
 
 export function getChapterMasterScore(chapter: any): number {
-  const breakdown = calculateChapterBreakdown(chapter);
-  return Math.round(breakdown.correct + 0.3 * breakdown.incorrect);
+  if (!chapter) return 0;
+
+  const dppComp = chapter.dpp?.comp || 0;
+  const dppAcc = chapter.dpp?.acc || 0;
+  const moduleComp = chapter.module?.comp || 0;
+  const moduleAcc = chapter.module?.acc || 0;
+
+  // Calculate assignment comp/acc (reuse same logic as breakdown)
+  const assignments = chapter.assignments || [];
+  const hasAssignments = assignments.length > 0;
+  let assComp = 0;
+  let assAcc = 0;
+
+  if (hasAssignments) {
+    let totalAssComp = 0;
+    let totalAssAcc = 0;
+    let submittedCount = 0;
+    assignments.forEach((a: any) => {
+      const qCount = a.questionCount || 0;
+      if (qCount > 0) {
+        if (a.selfAnalysis?.isSubmitted) {
+          const c = a.selfAnalysis.correctCount || 0;
+          const ic = a.selfAnalysis.incorrectCount || 0;
+          const attempted = c + ic;
+          totalAssComp += (attempted / qCount) * 100;
+          if (attempted > 0) { totalAssAcc += (c / attempted) * 100; submittedCount++; }
+        } else {
+          const solved = Object.values(a.questionStates || {}).filter((s: any) => s === 'completed').length;
+          const errors = Object.values(a.questionStates || {}).filter((s: any) => s === 'difficult' || s === 'later').length;
+          const attempted = solved + errors;
+          totalAssComp += (attempted / qCount) * 100;
+          if (attempted > 0) { totalAssAcc += (solved / attempted) * 100; submittedCount++; }
+        }
+      } else if (a.selfAnalysis?.isSubmitted) {
+        totalAssComp += 100;
+        const c = a.selfAnalysis.correctCount || 0;
+        const ic = a.selfAnalysis.incorrectCount || 0;
+        const total = c + ic;
+        if (total > 0) { totalAssAcc += (c / total) * 100; submittedCount++; }
+      }
+    });
+    assComp = totalAssComp / assignments.length;
+    if (submittedCount > 0) assAcc = totalAssAcc / submittedCount;
+  }
+
+  // Per-component mastery: DPP balanced (50/50), Module & Assignments accuracy-heavy (30/70)
+  const dppMastery = dppComp * 0.5 + dppAcc * 0.5;
+  const moduleMastery = moduleComp * 0.3 + moduleAcc * 0.7;
+  const assMastery = assComp * 0.3 + assAcc * 0.7;
+
+  // Weighted combination (DPP 30%, Module 40%, Assignments 30%)
+  let componentWeights = { dpp: 0.3, module: 0.4, assignments: 0.3 };
+  if (!hasAssignments) componentWeights.assignments = 0;
+  const totalWeight = componentWeights.dpp + componentWeights.module + componentWeights.assignments;
+
+  const rawScore = totalWeight > 0
+    ? (componentWeights.dpp * dppMastery + componentWeights.module * moduleMastery + componentWeights.assignments * assMastery) / totalWeight
+    : 0;
+
+  // Retention factor from spaced repetition reviews (0.85 base → 1.0 at 3+ reviews)
+  const reviewsDone = chapter.reviewsDone || 0;
+  const retentionFactor = Math.min(1.0, 0.85 + 0.05 * reviewsDone);
+
+  return Math.round(rawScore * retentionFactor);
+}
+
+/**
+ * Auto-computes chapter difficulty from question states.
+ * Counts 'difficult' states across moduleQuestionStates and assignment questionStates.
+ * Returns 'hard' | 'medium' | 'easy' | null (null if no question data exists).
+ */
+export function getChapterDifficulty(chapter: any): 'hard' | 'medium' | 'easy' | null {
+  if (!chapter) return null;
+
+  let totalQuestions = 0;
+  let difficultCount = 0;
+
+  // Count from module question states
+  const moduleStates = chapter.moduleQuestionStates || {};
+  const moduleValues = Object.values(moduleStates) as string[];
+  totalQuestions += moduleValues.length;
+  difficultCount += moduleValues.filter(s => s === 'difficult').length;
+
+  // Count from assignment question states
+  const assignments = chapter.assignments || [];
+  assignments.forEach((a: any) => {
+    const qStates = a.questionStates || {};
+    const vals = Object.values(qStates) as string[];
+    totalQuestions += vals.length;
+    difficultCount += vals.filter((s: string) => s === 'difficult' || s === 'incorrect').length;
+  });
+
+  if (totalQuestions === 0) return null;
+
+  const ratio = difficultCount / totalQuestions;
+  if (ratio > 0.50) return 'hard';
+  if (ratio > 0.25) return 'medium';
+  return 'easy';
 }
 
 export function getEffectiveStatusInfo(chapter: any) {

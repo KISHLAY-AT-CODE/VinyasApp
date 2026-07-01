@@ -27,7 +27,7 @@ import {
   Settings,
   RefreshCw
 } from 'lucide-react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Defs, LinearGradient, Stop, G, Circle } from 'react-native-svg';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
 
@@ -111,6 +111,8 @@ export default function AppIndex() {
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'home' | 'syllabus' | 'settings'>('home');
+  const [selectedSyllabusSubject, setSelectedSyllabusSubject] = useState<string>('');
+  const [selectedSyllabusChapter, setSelectedSyllabusChapter] = useState<string>('');
 
   // Header Details page state sync (to hide tab bar and show clean fullscreen view)
   const [isDetailsActive, setIsDetailsActive] = useState(false);
@@ -549,9 +551,16 @@ export default function AppIndex() {
   };
 
   // Handle Tab Click scroll
+  const [isHandlingSelectChapter, setIsHandlingSelectChapter] = useState(false);
   const handleTabPress = (tabName: 'home' | 'syllabus' | 'settings') => {
     isProgrammaticScrollRef.current = true;
     setActiveTab(tabName);
+  };
+
+  const handleSelectChapter = (subjectName: string, chapterName: string) => {
+    setSelectedSyllabusSubject(subjectName);
+    setSelectedSyllabusChapter(chapterName);
+    handleTabPress('syllabus');
   };
 
   // Handle Swipe scroll page update
@@ -636,7 +645,7 @@ export default function AppIndex() {
     if (!sub || !Array.isArray(sub.chapters)) return acc;
     const completedInSubject = sub.chapters.filter((ch: any) => {
       const totalProgress = calculateChapterProgress(ch);
-      return totalProgress === 100;
+      return ch.status === 'Done' || totalProgress === 100;
     }).length;
     return acc + completedInSubject;
   }, 0);
@@ -675,19 +684,53 @@ export default function AppIndex() {
         {!isDetailsActive && (
           <View style={styles.header}>
             <View style={styles.headerUserSection}>
-              <Image
-                source={require('../../assets/images/logo.png')}
-                style={styles.dashboardSmallLogo}
-                resizeMode="contain"
-              />
+              <Svg width={36} height={36} viewBox="0 0 512 512">
+                <Defs>
+                  <LinearGradient id="left-stem-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <Stop offset="0%" stopColor="#ea580c" />
+                    <Stop offset="60%" stopColor="#f97316" />
+                    <Stop offset="100%" stopColor="#facc15" />
+                  </LinearGradient>
+                  <LinearGradient id="right-rib1-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <Stop offset="0%" stopColor="#dc2626" />
+                    <Stop offset="100%" stopColor="#f97316" />
+                  </LinearGradient>
+                  <LinearGradient id="right-rib2-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <Stop offset="0%" stopColor="#db2777" />
+                    <Stop offset="100%" stopColor="#ef4444" />
+                  </LinearGradient>
+                </Defs>
+                <G transform="translate(12, -4)">
+                  {/* Left Pillar of V */}
+                  <Path
+                    d="M 172,130 C 172,130 186,190 216,285 C 222,305 235,340 244,360 C 246,364 250,364 252,360 C 255,354 262,330 268,310 L 220,170 C 214,152 196,130 172,130 Z"
+                    fill="url(#left-stem-grad)"
+                  />
+                  {/* Ribbon 1 */}
+                  <Path
+                    d="M 234,324 C 252,310 290,265 315,225 C 328,205 332,192 332,184 C 332,176 324,170 316,170 C 304,170 290,188 274,212 L 242,260 Z"
+                    fill="url(#right-rib1-grad)"
+                  />
+                  {/* Ribbon 2 */}
+                  <Path
+                    d="M 264,260 C 288,230 330,172 356,134 C 368,116 374,104 374,96 C 374,86 364,80 354,80 C 342,80 326,98 308,124 L 272,178 Z"
+                    fill="url(#right-rib2-grad)"
+                  />
+                  {/* Glowing Apex/Star of Success */}
+                  <G transform="translate(366, 88)">
+                    <Circle cx={0} cy={0} r={16} fill="#facc15" opacity={0.3} />
+                    <Path d="M 0,-8 L 2.5,-2.5 L 8,0 L 2.5,2.5 L 0,8 L -2.5,2.5 L -8,0 L -2.5,-2.5 Z" fill="#fef08a" />
+                  </G>
+                </G>
+              </Svg>
               <View style={{ marginLeft: 10 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={styles.headerWelcome}>{t('welcomeBack')}</Text>
+                  <Text style={styles.headerWelcome}>Greetings,</Text>
                   {updateText && (
                     <Text style={styles.headerUpdateText}> • {updateText}</Text>
                   )}
                 </View>
-                <Text style={styles.headerName}>{userName}</Text>
+                <Text style={[styles.headerName, { color: THEME.orange }]}>{userName}</Text>
               </View>
             </View>
             <View style={styles.headerActions}>
@@ -733,8 +776,13 @@ export default function AppIndex() {
                 totalChaptersCount={totalChaptersCount}
                 daysLeft={daysLeft}
                 cohort={cohort}
-                routines={routines}
-                activities={activeData?.activities}
+                userSyllabus={userSyllabus}
+                activities={userData?.activities || []}
+                onSelectSubject={(subjectName) => {
+                  setSelectedSyllabusSubject(subjectName);
+                  handleTabPress('syllabus');
+                }}
+                onSelectChapter={handleSelectChapter}
               />
             </View>
           </ScrollView>
@@ -745,6 +793,9 @@ export default function AppIndex() {
               <SyllabusTab
                 userSyllabus={userSyllabus}
                 onDetailsViewActiveChange={setIsDetailsActive}
+                selectedSubject={selectedSyllabusSubject}
+                selectedChapter={selectedSyllabusChapter}
+                onClearSelectedChapter={() => setSelectedSyllabusChapter('')}
               />
             </View>
           </View>
@@ -866,14 +917,6 @@ const styles = StyleSheet.create({
   headerUserSection: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  dashboardSmallLogo: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
   },
   headerWelcome: {
     color: THEME.textMuted,

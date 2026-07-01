@@ -33,6 +33,7 @@ import {
   calculateChapterProgress,
   calculateChapterBreakdown,
   getChapterMasterScore,
+  getChapterDifficulty,
   getEffectiveStatusInfo,
   getAccuracyTheme,
   getSubjectThemeColor
@@ -125,6 +126,9 @@ interface SyllabusTabProps {
     bookUrl?: string;
   }[];
   onDetailsViewActiveChange?: (isActive: boolean) => void;
+  selectedSubject?: string;
+  selectedChapter?: string;
+  onClearSelectedChapter?: () => void;
 }
 
 interface ChapterCardProps {
@@ -140,6 +144,7 @@ const ChapterCard = React.memo(({ chapter, onOpenDetails, chapterBookUrl, chapte
   const progress = calculateChapterProgress(chapter);
   const statusInfo = getEffectiveStatusInfo(chapter);
   const masterScore = getChapterMasterScore(chapter);
+  const difficulty = getChapterDifficulty(chapter);
   const breakdown = calculateChapterBreakdown(chapter);
 
   const accuracyTheme = getAccuracyTheme(breakdown.overallAcc);
@@ -204,6 +209,31 @@ const ChapterCard = React.memo(({ chapter, onOpenDetails, chapterBookUrl, chapte
                 MS: {masterScore}
               </Text>
             ) : null}
+            
+            {difficulty && (
+              <View style={[
+                styles.difficultyBadge,
+                {
+                  backgroundColor: difficulty === 'hard' ? 'rgba(239, 68, 68, 0.15)'
+                    : difficulty === 'medium' ? 'rgba(234, 179, 8, 0.15)'
+                    : 'rgba(16, 185, 129, 0.15)',
+                  borderColor: difficulty === 'hard' ? 'rgba(239, 68, 68, 0.3)'
+                    : difficulty === 'medium' ? 'rgba(234, 179, 8, 0.3)'
+                    : 'rgba(16, 185, 129, 0.3)'
+                }
+              ]}>
+                <Text style={[
+                  styles.difficultyBadgeText,
+                  {
+                    color: difficulty === 'hard' ? THEME.red
+                      : difficulty === 'medium' ? '#eab308'
+                      : THEME.emerald
+                  }
+                ]}>
+                  {difficulty.toUpperCase()}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
         
@@ -341,12 +371,23 @@ ChapterCard.displayName = 'ChapterCard';
 
 export default function SyllabusTab({
   userSyllabus,
-  onDetailsViewActiveChange
+  onDetailsViewActiveChange,
+  selectedSubject: selectedSubjectProp,
+  selectedChapter: selectedChapterProp,
+  onClearSelectedChapter
 }: SyllabusTabProps) {
   const subjects = userSyllabus.length > 0 ? userSyllabus.map(s => s.name) : ['Physics', 'Chemistry', 'Mathematics'];
-  const [selectedSubject, setSelectedSubject] = useState<string>('Physics');
+  const [selectedSubject, setSelectedSubject] = useState<string>(() => {
+    return selectedSubjectProp || (userSyllabus.length > 0 ? userSyllabus[0].name : 'Physics');
+  });
+
+  useEffect(() => {
+    if (selectedSubjectProp) {
+      setSelectedSubject(selectedSubjectProp);
+    }
+  }, [selectedSubjectProp]);
   const [syllabusSearch, setSyllabusSearch] = useState('');
-  const [sortBy, setSortBy] = useState<'default' | 'alphabetical' | 'ms_asc' | 'ms_desc'>('default');
+  const [sortBy, setSortBy] = useState<'alphabetical' | 'ms_asc' | 'ms_desc'>('ms_desc');
 
   // Swipeable Activity Page state
   const [detailsChapter, setDetailsChapter] = useState<Chapter | null>(null);
@@ -435,10 +476,9 @@ export default function SyllabusTab({
   }
 
   const sortOptions = [
-    { value: 'default', label: 'Default' },
-    { value: 'alphabetical', label: 'A-Z' },
+    { value: 'ms_desc', label: 'MS Desc' },
     { value: 'ms_asc', label: 'MS Asc' },
-    { value: 'ms_desc', label: 'MS Desc' }
+    { value: 'alphabetical', label: 'A-Z' }
   ] as const;
 
   const cycleSort = () => {
@@ -457,6 +497,18 @@ export default function SyllabusTab({
       scrollViewRef.current?.scrollTo({ x: index * width, animated: false });
     }, 50);
   };
+
+  useEffect(() => {
+    if (selectedChapterProp && subjectDoc?.chapters) {
+      const match = subjectDoc.chapters.find(
+        (c: any) => c.name.toLowerCase().trim() === selectedChapterProp.toLowerCase().trim()
+      );
+      if (match) {
+        handleOpenDetails(match, 'overview');
+      }
+      onClearSelectedChapter?.();
+    }
+  }, [selectedChapterProp, selectedSubject, subjectDoc]);
 
   const handleScroll = (event: any) => {
     const xOffset = event.nativeEvent.contentOffset.x;
@@ -1045,17 +1097,14 @@ export default function SyllabusTab({
           </Text>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
           {subjectBooks.length > 1 && (
             <TouchableOpacity
-              style={styles.bookPill as any}
+              style={styles.bookPill}
               activeOpacity={0.7}
               onPress={() => setShowBookSelector(true)}
             >
-              <BookOpen size={12} color={THEME.orange} style={{ marginRight: 4 }} />
-              <Text style={styles.actionLabel} numberOfLines={1}>
-                {subjectBooks.find(b => b.url === currentActiveBookUrl)?.name || 'Select Book'}
-              </Text>
+              <BookOpen size={12} color={THEME.orange} />
             </TouchableOpacity>
           )}
 
@@ -1064,7 +1113,7 @@ export default function SyllabusTab({
             activeOpacity={0.7}
             onPress={cycleSort}
           >
-            <Text style={styles.actionLabel}>
+            <Text style={styles.actionLabel} numberOfLines={1}>
               Sort: {sortOptions.find(o => o.value === sortBy)?.label}
             </Text>
           </TouchableOpacity>
@@ -1250,6 +1299,17 @@ const styles: any = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
+  difficultyBadge: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  difficultyBadgeText: {
+    fontSize: 7,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
   chapterHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1408,7 +1468,6 @@ const styles: any = StyleSheet.create({
     gap: 10,
   },
   sortPill: {
-    flex: 1,
     backgroundColor: THEME.card,
     borderRadius: 14,
     borderWidth: 1,
@@ -1416,10 +1475,11 @@ const styles: any = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   actionLabel: {
     color: THEME.textMuted,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
     textTransform: 'uppercase',
   },
@@ -1978,12 +2038,11 @@ const styles: any = StyleSheet.create({
     backgroundColor: THEME.card,
     borderWidth: 1,
     borderColor: THEME.border,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    flexDirection: 'row',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    justifyContent: 'center',
     alignItems: 'center',
-    maxWidth: 150,
   },
   detailsBookBtn: {
     padding: 8,
