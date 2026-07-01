@@ -58,6 +58,12 @@ jobs:
           }
           EOF
 
+      - name: Configure Gradle Memory Limits
+        run: |
+          mkdir -p ~/.gradle
+          echo "org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=1024m" >> ~/.gradle/gradle.properties
+          echo "org.gradle.daemon=false" >> ~/.gradle/gradle.properties
+
       - name: Build APK (EAS Local)
         run: |
           eas build --platform android --profile production --local --non-interactive --output ./VinyasSathi.apk
