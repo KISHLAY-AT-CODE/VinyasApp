@@ -30,6 +30,7 @@
     },
     "plugins": [
       "expo-router",
+      "./plugins/withApkInstaller",
       [
         "expo-splash-screen",
         {
@@ -53,7 +54,9 @@
       [
         "expo-navigation-bar",
         {
-          "hidden": true
+          "hidden": false,
+          "backgroundColor": "#020617",
+          "style": "light"
         }
       ]
     ],
@@ -64,7 +67,9 @@
     "extra": {
       "router": {},
       "expo-navigation-bar": {
-        "hidden": true
+        "hidden": false,
+        "backgroundColor": "#020617",
+        "style": "light"
       },
       "eas": {
         "projectId": "3ee08cef-4eaf-492a-9a07-012ba2ce4dce"

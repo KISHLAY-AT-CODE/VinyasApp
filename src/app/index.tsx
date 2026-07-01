@@ -15,16 +15,15 @@ import {
   Dimensions
 } from 'react-native';
 import { useFonts } from 'expo-font';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import * as NavigationBar from 'expo-navigation-bar';
+import { NavigationBar } from 'expo-navigation-bar';
 import { Image as ExpoImage } from 'expo-image';
 import {
   Home,
   BookOpen,
-  BarChart2,
-  Award,
   Settings,
   RefreshCw
 } from 'lucide-react-native';
@@ -43,9 +42,17 @@ import { VinyasLoadingScreen } from '../components/vinyas/VinyasLoadingScreen';
 // Tab Views
 import HomeTab from '../components/vinyas/HomeTab';
 import SyllabusTab from '../components/vinyas/SyllabusTab';
-import AnalyticsTab from '../components/vinyas/AnalyticsTab';
-import AchievementsTab from '../components/vinyas/AchievementsTab';
 import SettingsTab from '../components/vinyas/SettingsTab';
+
+// APK Self-Update
+import UpdateModal, { type OtaStatus, type BuildStatus } from '../components/vinyas/UpdateModal';
+import {
+  checkForApkUpdate,
+  downloadApk,
+  installApk,
+  type ApkUpdateInfo,
+  type DownloadProgress,
+} from '../services/apk-updater';
 
 const { width } = Dimensions.get('window');
 
@@ -55,6 +62,7 @@ export default function AppIndex() {
     'Poppins-Bold': require('../../assets/fonts/Poppins-Bold.ttf'),
   });
 
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
   const [syncId, setSyncId] = useState<string | null>(null);
@@ -63,6 +71,15 @@ export default function AppIndex() {
   const [isTestLoading, setIsTestLoading] = useState(false);
   const [updateText, setUpdateText] = useState<string | null>(null);
   const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
+
+  // Unified update modal state
+  const [apkUpdateInfo, setApkUpdateInfo] = useState<ApkUpdateInfo | null>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [apkDownloadProgress, setApkDownloadProgress] = useState<DownloadProgress | null>(null);
+  const [isDownloadingApk, setIsDownloadingApk] = useState(false);
+  const [isDownloadingOta, setIsDownloadingOta] = useState(false);
+  const [otaStatus, setOtaStatus] = useState<OtaStatus>('checking');
+  const [buildStatus, setBuildStatus] = useState<BuildStatus>('idle');
 
   useEffect(() => {
     if (fontsLoaded && !loadingStorage) {
@@ -93,7 +110,7 @@ export default function AppIndex() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'home' | 'syllabus' | 'analytics' | 'achievements' | 'settings'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'syllabus' | 'settings'>('home');
 
   // Header Details page state sync (to hide tab bar and show clean fullscreen view)
   const [isDetailsActive, setIsDetailsActive] = useState(false);
@@ -120,12 +137,16 @@ export default function AppIndex() {
     return TRANSLATIONS[language][key] || TRANSLATIONS['en'][key];
   };
 
+
+
   // Load sync config, language, and hide Android navigation on mount
   useEffect(() => {
     async function loadConfig() {
       try {
+
+
         if (Platform.OS === 'android') {
-          await NavigationBar.setVisibilityAsync('hidden');
+          NavigationBar.setHidden(false);
         }
 
         const storedSyncId = await AsyncStorage.getItem('vinyas_sync_id');
@@ -153,141 +174,168 @@ export default function AppIndex() {
     loadConfig();
   }, []);
 
-  // Background OTA updates check after initial loading is complete
+  // Background OTA + APK updates check after initial loading is complete
   useEffect(() => {
     if (loadingStorage) return;
 
-    async function checkForUpdatesBackground() {
+    async function checkAllUpdatesBackground() {
       if (__DEV__) return;
 
+      // --- OTA Check ---
+      let otaAvailable = false;
       try {
-        setUpdateText("Checking for updates...");
-        // 4s timeout for update check
         const updateCheckPromise = Updates.checkForUpdateAsync();
         const timeoutPromise = new Promise<any>((_, reject) =>
           setTimeout(() => reject(new Error("Timeout")), 4000)
         );
         const update = await Promise.race([updateCheckPromise, timeoutPromise]);
-
-        if (update.isAvailable) {
-          setUpdateText("Update available");
-          
-          Alert.alert(
-            "Update Available",
-            "A new version of Vinyas Sathi is available. Would you like to download and apply the update now?",
-            [
-              {
-                text: "Later",
-                style: "cancel",
-                onPress: () => setUpdateText(null)
-              },
-              {
-                text: "Update & Restart",
-                onPress: async () => {
-                  try {
-                    setIsDownloadingUpdate(true);
-                    setUpdateText("Downloading update...");
-                    
-                    // 15s timeout for fetching
-                    const updateFetchPromise = Updates.fetchUpdateAsync();
-                    const fetchTimeoutPromise = new Promise<any>((_, reject) =>
-                      setTimeout(() => reject(new Error("Timeout")), 15000)
-                    );
-                    await Promise.race([updateFetchPromise, fetchTimeoutPromise]);
-
-                    setUpdateText("Applying update...");
-                    await Updates.reloadAsync();
-                  } catch (fetchErr) {
-                    console.error("Failed to download update", fetchErr);
-                    Alert.alert("Update Failed", "Could not download the update. Please check your internet connection.");
-                  } finally {
-                    setIsDownloadingUpdate(false);
-                    setUpdateText(null);
-                  }
-                }
-              }
-            ]
-          );
-        } else {
-          setUpdateText(null);
-        }
+        otaAvailable = update.isAvailable;
       } catch (err) {
-        console.warn("Background update check failed:", err);
-        setUpdateText(null);
+        console.warn("Background OTA check failed:", err);
+      }
+
+      // --- APK Check ---
+      let apkUpdate: ApkUpdateInfo | null = null;
+      try {
+        apkUpdate = await checkForApkUpdate(false);
+      } catch (err) {
+        console.warn("Background APK check failed:", err);
+      }
+
+      // Only show modal if something needs attention
+      if (otaAvailable || apkUpdate) {
+        setOtaStatus(otaAvailable ? 'available' : 'up-to-date');
+        if (apkUpdate) {
+          setBuildStatus('available');
+          setApkUpdateInfo(apkUpdate);
+        } else {
+          setBuildStatus('up-to-date');
+        }
+        setShowUpdateModal(true);
       }
     }
 
-    checkForUpdatesBackground();
+    checkAllUpdatesBackground();
   }, [loadingStorage]);
 
-  const handleManualUpdateCheck = async () => {
-    if (__DEV__) {
-      Alert.alert("Check for Updates", "Updates are disabled in development mode.");
-      return;
-    }
+  // Full update check (used by both manual button and auto check)
+  const runFullUpdateCheck = async () => {
+    setOtaStatus('checking');
+    setBuildStatus('checking');
+    setShowUpdateModal(true);
 
+    // --- OTA Check ---
+    let otaAvailable = false;
     try {
-      setUpdateText("Checking for updates...");
-      const updateCheckPromise = Updates.checkForUpdateAsync();
-      const timeoutPromise = new Promise<any>((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout")), 4000)
-      );
-      const update = await Promise.race([updateCheckPromise, timeoutPromise]);
-
-      if (update.isAvailable) {
-        setUpdateText("Update available");
-        Alert.alert(
-          "Update Available",
-          "A new version of Vinyas Sathi is available. Would you like to download and apply the update now?",
-          [
-            {
-              text: "Later",
-              style: "cancel",
-              onPress: () => setUpdateText(null)
-            },
-            {
-              text: "Update & Restart",
-              onPress: async () => {
-                try {
-                  setIsDownloadingUpdate(true);
-                  setUpdateText("Downloading update...");
-                  
-                  // 15s timeout for fetching
-                  const updateFetchPromise = Updates.fetchUpdateAsync();
-                  const fetchTimeoutPromise = new Promise<any>((_, reject) =>
-                    setTimeout(() => reject(new Error("Timeout")), 15000)
-                  );
-                  await Promise.race([updateFetchPromise, fetchTimeoutPromise]);
-
-                  setUpdateText("Applying update...");
-                  await Updates.reloadAsync();
-                } catch (fetchErr) {
-                  console.error("Failed to download update", fetchErr);
-                  Alert.alert("Update Failed", "Could not download the update. Please check your internet connection.");
-                } finally {
-                  setIsDownloadingUpdate(false);
-                  setUpdateText(null);
-                }
-              }
-            }
-          ]
-        );
+      if (__DEV__) {
+        // OTA disabled in dev
+        setOtaStatus('up-to-date');
       } else {
-        setUpdateText(null);
-        Alert.alert("Up to Date", "Vinyas Sathi is already running the latest version.");
+        const updateCheckPromise = Updates.checkForUpdateAsync();
+        const timeoutPromise = new Promise<any>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout")), 4000)
+        );
+        const update = await Promise.race([updateCheckPromise, timeoutPromise]);
+        otaAvailable = update.isAvailable;
+        setOtaStatus(otaAvailable ? 'available' : 'up-to-date');
       }
     } catch (err) {
-      console.warn("Manual update check failed:", err);
-      setUpdateText(null);
-      Alert.alert("Connection Error", "Failed to check for updates. Please check your internet connection.");
+      console.warn("OTA check failed:", err);
+      setOtaStatus('error');
     }
+
+    // --- APK Check ---
+    try {
+      const apkUpdate = await checkForApkUpdate(true);
+      if (apkUpdate) {
+        setBuildStatus('available');
+        setApkUpdateInfo(apkUpdate);
+      } else {
+        setBuildStatus('up-to-date');
+      }
+    } catch (err) {
+      console.warn("APK check failed:", err);
+      setBuildStatus('error');
+    }
+  };
+
+  // OTA update handler (called from modal's Update button)
+  const handleOtaUpdate = async () => {
+    try {
+      setIsDownloadingOta(true);
+      setIsDownloadingUpdate(true);
+      setUpdateText("Downloading update...");
+
+      const updateFetchPromise = Updates.fetchUpdateAsync();
+      const fetchTimeoutPromise = new Promise<any>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), 15000)
+      );
+      await Promise.race([updateFetchPromise, fetchTimeoutPromise]);
+
+      setUpdateText("Applying update...");
+      await Updates.reloadAsync();
+    } catch (fetchErr) {
+      console.error("Failed to download OTA update", fetchErr);
+      Alert.alert("Update Failed", "Could not download the update. Please check your internet connection.");
+    } finally {
+      setIsDownloadingOta(false);
+      setIsDownloadingUpdate(false);
+      setUpdateText(null);
+    }
+  };
+
+  // APK download and install handler
+  const handleApkDownloadAndInstall = async () => {
+    if (!apkUpdateInfo) return;
+
+    try {
+      setIsDownloadingApk(true);
+      setApkDownloadProgress({ totalBytes: 0, downloadedBytes: 0, percentage: 0 });
+
+      addNetworkLog(`APK download started: v${apkUpdateInfo.version}`);
+
+      const filePath = await downloadApk(
+        apkUpdateInfo.downloadUrl,
+        apkUpdateInfo.version,
+        (progress) => {
+          setApkDownloadProgress(progress);
+        }
+      );
+
+      addNetworkLog(`APK download complete: ${filePath}`);
+      setApkDownloadProgress({ totalBytes: 1, downloadedBytes: 1, percentage: 100 });
+
+      // Brief pause so user sees 100%
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      addNetworkLog('Launching APK installer...');
+      await installApk(filePath);
+
+      // Dismiss modal after install intent is launched
+      setShowUpdateModal(false);
+      setIsDownloadingApk(false);
+      setApkDownloadProgress(null);
+    } catch (err: any) {
+      console.error('APK update failed:', err);
+      addNetworkLog(`APK update error: ${err.message}`);
+      Alert.alert(
+        'Update Failed',
+        `Could not download or install the update. ${err.message}`
+      );
+      setIsDownloadingApk(false);
+      setApkDownloadProgress(null);
+    }
+  };
+
+  const handleManualUpdateCheck = () => {
+    runFullUpdateCheck();
   };
 
   // Synchronize ScrollView offset when activeTab changes programmatically
   useEffect(() => {
     if (syncId && mainPagerRef.current) {
       if (isProgrammaticScrollRef.current) {
-        const tabs = ['home', 'syllabus', 'analytics', 'achievements', 'settings'] as const;
+        const tabs = ['home', 'syllabus', 'settings'] as const;
         const idx = tabs.indexOf(activeTab);
         mainPagerRef.current?.scrollTo({ x: idx * width, animated: true });
         isProgrammaticScrollRef.current = false;
@@ -298,7 +346,7 @@ export default function AppIndex() {
   // Handle snap scroll when syncId updates initially
   useEffect(() => {
     if (syncId && mainPagerRef.current) {
-      const tabs = ['home', 'syllabus', 'analytics', 'achievements', 'settings'] as const;
+      const tabs = ['home', 'syllabus', 'settings'] as const;
       const idx = tabs.indexOf(activeTab);
       mainPagerRef.current?.scrollTo({ x: idx * width, animated: false });
     }
@@ -501,7 +549,7 @@ export default function AppIndex() {
   };
 
   // Handle Tab Click scroll
-  const handleTabPress = (tabName: 'home' | 'syllabus' | 'analytics' | 'achievements' | 'settings') => {
+  const handleTabPress = (tabName: 'home' | 'syllabus' | 'settings') => {
     isProgrammaticScrollRef.current = true;
     setActiveTab(tabName);
   };
@@ -510,8 +558,8 @@ export default function AppIndex() {
   const handleMainScroll = (event: any) => {
     const xOffset = event.nativeEvent.contentOffset.x;
     const pageIndex = Math.round(xOffset / width);
-    const tabs = ['home', 'syllabus', 'analytics', 'achievements', 'settings'] as const;
-    if (pageIndex >= 0 && pageIndex < 5) {
+    const tabs = ['home', 'syllabus', 'settings'] as const;
+    if (pageIndex >= 0 && pageIndex < 3) {
       setActiveTab(tabs[pageIndex]);
     }
   };
@@ -539,12 +587,29 @@ export default function AppIndex() {
           isSathiHindi={isSathiHindi}
           setIsSathiHindi={setIsSathiHindi}
           updateText={updateText}
+          onCheckForUpdates={runFullUpdateCheck}
         />
         <ScannerModal
           visible={isScannerOpen && !!cameraPermission?.granted}
           onClose={() => setIsScannerOpen(false)}
           onBarCodeScanned={handleBarcodeScanned}
           hasPermission={!!cameraPermission?.granted}
+        />
+        <UpdateModal
+          visible={showUpdateModal}
+          otaStatus={otaStatus}
+          buildStatus={buildStatus}
+          apkUpdateInfo={apkUpdateInfo}
+          downloadProgress={apkDownloadProgress}
+          isDownloadingApk={isDownloadingApk}
+          isDownloadingOta={isDownloadingOta}
+          onOtaUpdate={handleOtaUpdate}
+          onApkDownload={handleApkDownloadAndInstall}
+          onDismiss={() => {
+            if (!isDownloadingApk && !isDownloadingOta && !apkUpdateInfo?.isForced) {
+              setShowUpdateModal(false);
+            }
+          }}
         />
       </>
     );
@@ -684,31 +749,7 @@ export default function AppIndex() {
             </View>
           </View>
 
-          {/* Page 2: Analytics */}
-          <ScrollView
-            style={{ width: width }}
-            contentContainerStyle={{ paddingBottom: 40 }}
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.tabContainer}>
-              <AnalyticsTab
-                testLogs={testLogs}
-              />
-            </View>
-          </ScrollView>
 
-          {/* Page 3: Achievements */}
-          <ScrollView
-            style={{ width: width }}
-            contentContainerStyle={{ paddingBottom: 40 }}
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.tabContainer}>
-              <AchievementsTab
-                achievements={achievements}
-              />
-            </View>
-          </ScrollView>
 
           {/* Page 4: Settings */}
           <ScrollView
@@ -736,40 +777,28 @@ export default function AppIndex() {
 
         {/* Tab Navigation (Hidden when full-screen chapter details are active) */}
         {!isDetailsActive && (
-          <View style={styles.tabBar}>
+          <View style={[styles.tabBar, { paddingBottom: insets.bottom + 14 }]}>
             <TouchableOpacity
               onPress={() => handleTabPress('home')}
               style={styles.tabBarItem}
             >
-              <Home size={20} color={activeTab === 'home' ? THEME.orange : THEME.textMuted} />
+              <Home size={24} color={activeTab === 'home' ? THEME.orange : THEME.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => handleTabPress('syllabus')}
               style={styles.tabBarItem}
             >
-              <BookOpen size={20} color={activeTab === 'syllabus' ? THEME.orange : THEME.textMuted} />
+              <BookOpen size={24} color={activeTab === 'syllabus' ? THEME.orange : THEME.textMuted} />
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => handleTabPress('analytics')}
-              style={styles.tabBarItem}
-            >
-              <BarChart2 size={20} color={activeTab === 'analytics' ? THEME.orange : THEME.textMuted} />
-            </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => handleTabPress('achievements')}
-              style={styles.tabBarItem}
-            >
-              <Award size={20} color={activeTab === 'achievements' ? THEME.orange : THEME.textMuted} />
-            </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => handleTabPress('settings')}
               style={styles.tabBarItem}
             >
-              <Settings size={20} color={activeTab === 'settings' ? THEME.orange : THEME.textMuted} />
+              <Settings size={24} color={activeTab === 'settings' ? THEME.orange : THEME.textMuted} />
             </TouchableOpacity>
           </View>
         )}
@@ -787,6 +816,24 @@ export default function AppIndex() {
           }
         />
       )}
+
+      {/* Unified Update Status Modal */}
+      <UpdateModal
+        visible={showUpdateModal}
+        otaStatus={otaStatus}
+        buildStatus={buildStatus}
+        apkUpdateInfo={apkUpdateInfo}
+        downloadProgress={apkDownloadProgress}
+        isDownloadingApk={isDownloadingApk}
+        isDownloadingOta={isDownloadingOta}
+        onOtaUpdate={handleOtaUpdate}
+        onApkDownload={handleApkDownloadAndInstall}
+        onDismiss={() => {
+          if (!isDownloadingApk && !isDownloadingOta && !apkUpdateInfo?.isForced) {
+            setShowUpdateModal(false);
+          }
+        }}
+      />
     </View>
   );
 }
@@ -892,11 +939,11 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: THEME.card,
+    backgroundColor: THEME.bg,
     borderTopWidth: 1,
     borderColor: THEME.border,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 14,
-    paddingTop: 14,
+    paddingTop: 16,
+    paddingHorizontal: 40,
   },
   tabBarItem: {
     flex: 1,

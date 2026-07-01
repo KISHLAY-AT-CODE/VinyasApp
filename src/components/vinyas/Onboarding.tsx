@@ -18,7 +18,7 @@ import Animated, {
   FadeOutUp,
   LinearTransition
 } from 'react-native-reanimated';
-import { QrCode, Settings, ArrowRight } from 'lucide-react-native';
+import { QrCode, Settings, ArrowRight, RefreshCw } from 'lucide-react-native';
 import { THEME, TRANSLATIONS } from '../../constants/vinyas-theme';
 import { VinyasLoadingScreen } from './VinyasLoadingScreen';
 
@@ -37,6 +37,7 @@ interface OnboardingProps {
   isSathiHindi: boolean;
   setIsSathiHindi: (val: boolean) => void;
   updateText?: string | null;
+  onCheckForUpdates?: () => void;
 }
 
 export default function Onboarding({
@@ -53,7 +54,8 @@ export default function Onboarding({
   setIsVinyasHindi,
   isSathiHindi,
   setIsSathiHindi,
-  updateText = null
+  updateText = null,
+  onCheckForUpdates = () => {}
 }: OnboardingProps) {
   const [isInputFocused, setIsInputFocused] = useState(false);
 
@@ -88,6 +90,13 @@ export default function Onboarding({
           </TouchableOpacity>
 
           <View style={styles.floatingHeaderRightRow}>
+            <TouchableOpacity
+              style={[styles.floatingRoundBtn, { marginRight: 10 }]}
+              onPress={onCheckForUpdates}
+            >
+              <RefreshCw size={16} color="#ffffff" />
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={[styles.floatingRoundBtn, { marginRight: 10 }]}
               onPress={toggleLanguage}
@@ -247,6 +256,9 @@ export default function Onboarding({
 
           <Text style={styles.artworkCredits}>
             {t('artworkCredits')}
+          </Text>
+          <Text style={styles.troubleText}>
+            Facing issues? hit reloading icon to check for a stable update.
           </Text>
         </ScrollView>
       </ImageBackground>
@@ -455,6 +467,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 24,
     marginBottom: 8,
+  },
+  troubleText: {
+    color: 'rgba(255, 255, 255, 0.35)',
+    fontSize: 9.5,
+    fontFamily: 'Poppins-Regular',
+    textAlign: 'center',
+    marginTop: 12,
+    marginBottom: 20,
   },
   floatingHeaderRow: {
     flexDirection: 'row',

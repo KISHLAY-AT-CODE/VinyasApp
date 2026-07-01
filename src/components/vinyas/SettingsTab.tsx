@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { User, LogOut, Settings as SettingsIcon, Terminal, RefreshCw, Flame } from 'lucide-react-native';
 import { THEME } from '../../constants/vinyas-theme';
+import { APP_VERSION } from '../../constants/version';
 
 interface SettingsTabProps {
   syncId: string | null;
@@ -99,7 +100,7 @@ export default function SettingsTab({
           }}
         >
           <Text style={styles.infoLabel}>Client Version</Text>
-          <Text style={styles.infoValue}>1.0.1</Text>
+          <Text style={styles.infoValue}>{APP_VERSION}</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
